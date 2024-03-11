@@ -54,11 +54,12 @@ import qualified Frames.Aggregation as FA
 import qualified Frames.Folds as FF
 import qualified Frames.Serialize as FS
 import qualified Knit.Report as K
+import qualified System.Environment as Env
 
 --F.declareColumn "Count" ''Int
 
-censusDataDir :: Text
-censusDataDir = "../bigData/Census"
+censusDataDir :: IO Text
+censusDataDir = fromMaybe "../bigData/Census" . fmap toText <$> Env.lookupEnv "BR_ACS_TABLES_DATA_DIR"
 -- p is location prefix
 -- d is per-location data
 -- ks is table key
@@ -200,18 +201,22 @@ censusTablesByDistrict filesByYear cacheName = do
 censusTablesForExistingCDs  :: (K.KnitEffects r
                                , BR.CacheEffects r)
                             => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
-censusTablesForExistingCDs = censusTablesByDistrict fileByYear "existingCDs" where
-  fileByYear = [ (BRC.TY2012, censusDataDir <> "/cd113Raw.csv")
-               , (BRC.TY2014, censusDataDir <> "/cd114Raw.csv")
-               , (BRC.TY2016, censusDataDir <> "/cd115Raw.csv")
-               , (BRC.TY2020, censusDataDir <> "/cd116Raw.csv")
-               ]
+censusTablesForExistingCDs = do
+  censusDir <- K.liftKnit censusDataDir
+  let fileByYear = [ (BRC.TY2012, censusDir <> "/cd113Raw.csv")
+                   , (BRC.TY2014, censusDir <> "/cd114Raw.csv")
+                   , (BRC.TY2016, censusDir <> "/cd115Raw.csv")
+                   , (BRC.TY2020, censusDir <> "/cd116Raw.csv")
+                   ]
+  censusTablesByDistrict fileByYear "existingCDs"
 
 censusTablesForDRACDs  :: (K.KnitEffects r
                           , BR.CacheEffects r)
                        => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
-censusTablesForDRACDs = censusTablesByDistrict fileByYear "DRA_CDs" where
-  fileByYear = [ (BRC.TY2020, censusDataDir <> "/NC_DRA.csv")]
+censusTablesForDRACDs = do
+  censusDir <- K.liftKnit censusDataDir
+  let fileByYear = [ (BRC.TY2020, censusDir <> "/NC_DRA.csv")]
+  censusTablesByDistrict fileByYear "DRA_CDs"
 
 noMaps :: Set a
 noMaps = Set.empty --fromList [""]
@@ -221,12 +226,13 @@ censusTablesForProposedCDs :: (K.KnitEffects r
                            => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesForProposedCDs = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
+  censusDir <- K.liftKnit censusDataDir
   let states = FL.fold (FL.premap (F.rgetField @GT.StateAbbreviation) FL.list)
                $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                  && not (F.rgetField @BR.OneDistrict r)
                                  && not (F.rgetField @GT.StateAbbreviation r `Set.member` noMaps)
                                ) stateInfo
-      fileByYear = fmap (\sa -> (BRC.TY2020, censusDataDir <> "/cd117_" <> sa <> ".csv")) states
+      fileByYear = fmap (\sa -> (BRC.TY2020, censusDir <> "/cd117_" <> sa <> ".csv")) states
   censusTablesByDistrict fileByYear "proposedCDs"
 
 censusTables2022CDsACS2021 :: (K.KnitEffects r
@@ -234,12 +240,13 @@ censusTables2022CDsACS2021 :: (K.KnitEffects r
                            => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTables2022CDsACS2021 = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
+  censusDir <- K.liftKnit censusDataDir
   let states = FL.fold (FL.premap (F.rgetField @GT.StateAbbreviation) FL.list)
                $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                  && not (F.rgetField @BR.OneDistrict r)
                                  && not (F.rgetField @GT.StateAbbreviation r `Set.member` noMaps)
                                ) stateInfo
-      fileByYear = fmap (\sa -> (BRC.TY2021, censusDataDir <> "/cd117_ACS2021/" <> sa <> ".csv")) states
+      fileByYear = fmap (\sa -> (BRC.TY2021, censusDir <> "/cd117_ACS2021/" <> sa <> ".csv")) states
   censusTablesByDistrict fileByYear "proposedCDs"
 
 yearsText :: Int -> BRC.TableYear -> Text
@@ -250,40 +257,28 @@ censusTablesCD :: (K.KnitEffects r
                => Int -> BRC.TableYear -> K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesCD mapYear acsTableYear = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
+  censusDir <- K.liftKnit censusDataDir
   let states = FL.fold (FL.premap (F.rgetField @GT.StateAbbreviation) FL.list)
                $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                  && not (F.rgetField @BR.OneDistrict r)
                                  && not (F.rgetField @GT.StateAbbreviation r `Set.member` noMaps)
                                ) stateInfo
-      fileByYear = fmap (\sa -> (acsTableYear, censusDataDir <> "/cd" <> yearsText mapYear acsTableYear <> "/" <> sa <> ".csv")) states
+      fileByYear = fmap (\sa -> (acsTableYear, censusDir <> "/cd" <> yearsText mapYear acsTableYear <> "/" <> sa <> ".csv")) states
   censusTablesByDistrict fileByYear ("CDs" <> yearsText mapYear acsTableYear)
 
-{-
-censusTablesForSLDs ::  (K.KnitEffects r
-                        , BR.CacheEffects r)
-                    => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
-censusTablesForSLDs = censusTablesByDistrict fileByYear "existingSLDs" where
-  fileByYear = [ (BRC.TY2018, censusDataDir <> "/va_2018_sldl.csv")
-               , (BRC.TY2018, censusDataDir <> "/va_2020_sldu.csv")
-               , (BRC.TY2018, censusDataDir <> "/tx_2020_sldl.csv")
-               , (BRC.TY2018, censusDataDir <> "/tx_2020_sldu.csv")
-               , (BRC.TY2018, censusDataDir <> "/ga_2020_sldl.csv")
-               , (BRC.TY2018, censusDataDir <> "/ga_2020_sldu.csv")
-               , (BRC.TY2018, censusDataDir <> "/nv_2020_sldl.csv")
-               , (BRC.TY2018, censusDataDir <> "/oh_2020_sldl.csv")
-               ]
--}
+
 censusTablesFor2022SLDs ::  (K.KnitEffects r, BR.CacheEffects r)
                         => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesFor2022SLDs = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
+  censusDir <- K.liftKnit censusDataDir
   let statesAnd = FL.fold (FL.premap (\r -> (F.rgetField @GT.StateAbbreviation r, F.rgetField @BR.SLDUpperOnly r)) FL.list)
                   $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                          && not (F.rgetField @GT.StateAbbreviation r `Set.member` Set.insert "DC" noMaps)
                                   ) stateInfo
       fileByYear = concat
-                   $ fmap (\(sa, uo) -> [(BRC.TY2020, censusDataDir <> "/" <> sa <> "_2022_sldu.csv")] ++
-                                        if uo then [] else [(BRC.TY2020, censusDataDir <> "/" <> sa <> "_2022_sldl.csv")]) statesAnd
+                   $ fmap (\(sa, uo) -> [(BRC.TY2020, censusDir <> "/" <> sa <> "_2022_sldu.csv")] ++
+                                        if uo then [] else [(BRC.TY2020, censusDir <> "/" <> sa <> "_2022_sldl.csv")]) statesAnd
   censusTablesByDistrict fileByYear "SLDs_2022"
 
 censusTablesFor2022SLD_ACS2021 ::  (K.KnitEffects r
@@ -291,13 +286,14 @@ censusTablesFor2022SLD_ACS2021 ::  (K.KnitEffects r
                     => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesFor2022SLD_ACS2021 = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
+  censusDir <- K.liftKnit censusDataDir
   let statesAnd = FL.fold (FL.premap (\r -> (F.rgetField @GT.StateAbbreviation r, F.rgetField @BR.SLDUpperOnly r)) FL.list)
                   $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                          && not (F.rgetField @GT.StateAbbreviation r `Set.member` Set.insert "DC" noMaps)
                                   ) stateInfo
       fileByYear = concat
-                   $ fmap (\(sa, uo) -> [(BRC.TY2021, censusDataDir <> "/sldu2022_ACS2021/" <> sa <> ".csv")] ++
-                                        if uo then [] else [(BRC.TY2021, censusDataDir <> "/sldl2022_ACS2021/" <> sa <> ".csv")]) statesAnd
+                   $ fmap (\(sa, uo) -> [(BRC.TY2021, censusDir <> "/sldu2022_ACS2021/" <> sa <> ".csv")] ++
+                                        if uo then [] else [(BRC.TY2021, censusDir <> "/sldl2022_ACS2021/" <> sa <> ".csv")]) statesAnd
   censusTablesByDistrict fileByYear "SLDs2022_ACS2021"
 
 censusTablesForSLDs ::  (K.KnitEffects r
@@ -305,14 +301,15 @@ censusTablesForSLDs ::  (K.KnitEffects r
                     => Int -> BRC.TableYear -> K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesForSLDs mapYear acsTableYear = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
+  censusDir <- K.liftKnit censusDataDir
   let statesAnd = FL.fold (FL.premap (\r -> (F.rgetField @GT.StateAbbreviation r, F.rgetField @BR.SLDUpperOnly r)) FL.list)
                   $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                          && not (F.rgetField @GT.StateAbbreviation r `Set.member` Set.insert "DC" noMaps)
                                   ) stateInfo
       fileByYear = concat
-                   $ fmap (\(sa, uo) -> [(acsTableYear, censusDataDir <> "/sldu" <> yearsText mapYear acsTableYear <> "/" <> sa <> ".csv")] ++
+                   $ fmap (\(sa, uo) -> [(acsTableYear, censusDir <> "/sldu" <> yearsText mapYear acsTableYear <> "/" <> sa <> ".csv")] ++
                                         if uo then []
-                                        else [(acsTableYear, censusDataDir <> "/sldl" <> yearsText mapYear acsTableYear <> "/" <> sa <> ".csv")]) statesAnd
+                                        else [(acsTableYear, censusDir <> "/sldl" <> yearsText mapYear acsTableYear <> "/" <> sa <> ".csv")]) statesAnd
   censusTablesByDistrict fileByYear ("SLDs" <> yearsText mapYear acsTableYear)
 
 checkAllCongressionalAndConvert :: forall r a b.
