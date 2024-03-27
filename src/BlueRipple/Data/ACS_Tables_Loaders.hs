@@ -387,18 +387,21 @@ reToR5Fld =
         let combineDiff _ _ x y = x - y
 --            combineSum _ _ x y = x + y
             combineMin n1 n2 x1 x2 = if n1 < n2 then x1 else x2
+--            combineMax n1 n2 x1 x2 = if n1 > n2 then x1 else x2
             wh = DT.combinePWDRecs combineDiff w wnh
             nwh = DT.combinePWDRecs combineDiff h wh
             oh = DT.combinePWDRecs combineMin o nwh
             onh = DT.combinePWDRecs combineDiff o oh
-            bh = DT.combinePWDRecs combineDiff nwh oh
+            bh = DT.combinePWDRecs combineMin b (DT.combinePWDRecs combineDiff nwh oh)
             bnh = DT.combinePWDRecs combineDiff b bh
+            ah = DT.combinePWDRecs combineMin a (DT.combinePWDRecs combineDiff (DT.combinePWDRecs combineDiff nwh oh) bh)
+            anh = DT.combinePWDRecs combineDiff a ah
 --            rh = DT.combinePWDRecs combineSum wh (DT.combinePWDRecs combineSum bh oh)
         in F.toFrame
            [
              DT.R5_Other F.&: onh
            , DT.R5_Black F.&: bnh
-           , DT.R5_Asian F.&: a
+           , DT.R5_Asian F.&: anh
            , DT.R5_Hispanic F.&: h
            , DT.R5_WhiteNonHispanic F.&: wnh
            ]
