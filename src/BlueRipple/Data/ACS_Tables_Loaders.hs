@@ -58,8 +58,8 @@ import qualified System.Environment as Env
 
 --F.declareColumn "Count" ''Int
 
-censusDataDir :: IO Text
-censusDataDir = fromMaybe "../bigData/Census" . fmap toText <$> Env.lookupEnv "BR_ACS_TABLES_DATA_DIR"
+censusDataDir :: IO (Maybe Text)
+censusDataDir = fmap BR.insureFinalSlash (fromMaybe "../bigData/Census" . fmap toText <$> Env.lookupEnv "BR_ACS_TABLES_DATA_DIR")
 -- p is location prefix
 -- d is per-location data
 -- ks is table key
@@ -145,6 +145,65 @@ instance (FieldC Flat.Flat a
 
 --type CDRow rs = '[BR.Year] V.++ BRC.CDPrefixR V.++ rs V.++ '[DT.PopCount]
 
+type LoadedCensusTablesByTract =
+  CensusTables BRC.TractLocationR BRC.CensusDataR DT.Age6C DT.SexC DT.Education4C BRC.RaceEthnicityC BRC.CitizenshipC BRC.EmploymentC
+
+censusTablesByTract :: (K.KnitEffects r
+                       , BR.CacheEffects r)
+                    => [(BRC.TableYear, Text)] -> Text -> K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByTract)
+censusTablesByTract filesByYear cacheName = do
+  let tableDescriptions ty = KT.allTableDescriptions BRC.sexByAge (BRC.sexByAgePrefix ty)
+                             <> KT.allTableDescriptions BRC.sexByCitizenship (BRC.sexByCitizenshipPrefix ty)
+                             <> KT.allTableDescriptions BRC.sexByEducation (BRC.sexByEducationPrefix ty)
+                             <> KT.allTableDescriptions BRC.sexByAgeByEmployment (BRC.sexByAgeByEmploymentPrefix ty)
+                             <> KT.tableDescriptions BRC.sexByAgeByEducation (pure $ BRC.sexByAgeByEducationPrefix ty)
+      makeConsolidatedFrame ty tableDF prefixF keyRec vTableRows = do
+        vTRs <- K.knitEither $ traverse (KT.consolidateTables tableDF (prefixF ty)) vTableRows
+        let frame = frameFromTableRows BRC.unTractPrefix keyRec (BRC.tableYear ty) vTRs
+        pure frame
+      makeSingleFrame ty tableDF prefixByYear keyRec vTableRows = do
+        vTRs <- K.knitEither $ traverse (\tr -> KT.typeOneTable tableDF tr (prefixByYear ty)) vTableRows
+        let frame = frameFromTableRows BRC.unTractPrefix keyRec (BRC.tableYear ty) vTRs
+        pure frame
+      doOneYear (ty, f) = do
+        (_, vTableRows) <- K.knitEither =<< (K.liftKnit $ KT.decodeCSVTablesFromFile @BRC.TractPrefix (tableDescriptions ty) $ toString f)
+        K.logLE K.Diagnostic $ "Loaded and parsed \"" <> f <> "\" for " <> show (BRC.tableYear ty) <> "."
+        K.logLE K.Diagnostic $ "Building Race/Ethnicity by Sex by Age Tables..."
+        fRaceBySexByAge <- makeConsolidatedFrame ty BRC.sexByAge BRC.sexByAgePrefix raceBySexByAgeKeyRec vTableRows
+        K.logLE K.Diagnostic $ "Building Race/Ethnicity by Sex by Citizenship Tables..."
+        fRaceBySexByCitizenship <- makeConsolidatedFrame ty BRC.sexByCitizenship BRC.sexByCitizenshipPrefix raceBySexByCitizenshipKeyRec vTableRows
+        K.logLE K.Diagnostic $ "Building Race/Ethnicity by Sex by Education Tables..."
+        fRaceBySexByEducation <- makeConsolidatedFrame ty BRC.sexByEducation BRC.sexByEducationPrefix raceBySexByEducationKeyRec vTableRows
+        K.logLE K.Diagnostic $ "Building Race/Ethnicity by Sex by Employment Tables..."
+        fRaceBySexByAgeByEmployment <- makeConsolidatedFrame ty BRC.sexByAgeByEmployment BRC.sexByAgeByEmploymentPrefix raceBySexByAgeByEmploymentKeyRec vTableRows
+        K.logLE K.Diagnostic $ "Building Age By Sex by Education Tables..."
+        fSexByAgeByEducation <- makeSingleFrame ty BRC.sexByAgeByEducation BRC.sexByAgeByEducationPrefix sexByAgeByEducationKeyRec vTableRows
+        let fldSumAges = FMR.concatFold
+                       $ FMR.mapReduceFold
+                       FMR.noUnpack
+                       (FMR.assignKeysAndData @(CensusRowUC BRC.TractLocationR BRC.CensusDataR [BRC.RaceEthnicityC, DT.SexC, BRC.EmploymentC]) @'[DT.PopCount])
+                       (FMR.foldAndAddKey $ FF.foldAllConstrained @Num FL.sum)
+            fRaceBySexByEmployment = FL.fold fldSumAges fRaceBySexByAgeByEmployment
+        return $ CensusTables
+          (FL.fold (aggregateSameKeysF @BRC.TractLocationR @[DT.Age6C, DT.SexC, BRC.RaceEthnicityC]) $ fmap F.rcast fRaceBySexByAge)
+          (FL.fold (aggregateSameKeysF @BRC.TractLocationR @[BRC.CitizenshipC, DT.SexC, BRC.RaceEthnicityC]) $ fmap F.rcast fRaceBySexByCitizenship)
+          (FL.fold (aggregateSameKeysF @BRC.TractLocationR @[DT.SexC, DT.Education4C, BRC.RaceEthnicityC]) $ fmap F.rcast fRaceBySexByEducation)
+          (FL.fold (aggregateSameKeysF @BRC.TractLocationR @[DT.SexC, BRC.RaceEthnicityC, BRC.EmploymentC]) $ fmap F.rcast fRaceBySexByEmployment)
+          (FL.fold (aggregateSameKeysF @BRC.TractLocationR @[DT.Age5C, DT.SexC, DT.Education4C]) $ fmap F.rcast fSexByAgeByEducation)
+  dataDeps <- traverse (K.fileDependency . toString . snd) filesByYear
+  let dataDep = fromMaybe (pure ()) $ fmap sconcat $ nonEmpty dataDeps
+  K.retrieveOrMake @BR.SerializerC @BR.CacheData @Text ("data/Census/" <> cacheName <> ".bin") dataDep $ const $ do
+    K.logLE K.Info "Rebuilding Census tables for Tracts..."
+    tables <- traverse doOneYear filesByYear
+    neTables <- K.knitMaybe "Empty list of tables in result of censusTablesByTract" $ nonEmpty tables
+    return $ sconcat neTables
+
+
+loadACS_2017_2022_Tracts :: (K.KnitEffects r, BR.CacheEffects r) => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByTract)
+loadACS_2017_2022_Tracts = do
+  dataDir <- K.liftKnit censusDataDir >>= K.knitMaybe "loadACS_2017_2022_Tracts: Empty path given to indureFinalSlash?"
+  censusTablesByTract [(BRC.TY2022, dataDir <> "Tracts/ACS_5YR_2017_2022.csv")] "ACS_2017_2022_Tracts"
+
 type LoadedCensusTablesByLD
   = CensusTables BRC.LDLocationR BRC.CensusDataR DT.Age6C DT.SexC DT.Education4C BRC.RaceEthnicityC BRC.CitizenshipC BRC.EmploymentC
 
@@ -202,7 +261,7 @@ censusTablesForExistingCDs  :: (K.KnitEffects r
                                , BR.CacheEffects r)
                             => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesForExistingCDs = do
-  censusDir <- K.liftKnit censusDataDir
+  censusDir <- K.liftKnit censusDataDir >>= K.knitMaybe "censusTablesForExistingCDs: Empty path given to indureFinalSlash?"
   let fileByYear = [ (BRC.TY2012, censusDir <> "/cd113Raw.csv")
                    , (BRC.TY2014, censusDir <> "/cd114Raw.csv")
                    , (BRC.TY2016, censusDir <> "/cd115Raw.csv")
@@ -214,7 +273,7 @@ censusTablesForDRACDs  :: (K.KnitEffects r
                           , BR.CacheEffects r)
                        => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesForDRACDs = do
-  censusDir <- K.liftKnit censusDataDir
+  censusDir <- K.liftKnit censusDataDir >>= K.knitMaybe "censusTablesForDRACDs: Empty path given to indureFinalSlash?"
   let fileByYear = [ (BRC.TY2020, censusDir <> "/NC_DRA.csv")]
   censusTablesByDistrict fileByYear "DRA_CDs"
 
@@ -226,7 +285,7 @@ censusTablesForProposedCDs :: (K.KnitEffects r
                            => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesForProposedCDs = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
-  censusDir <- K.liftKnit censusDataDir
+  censusDir <- K.liftKnit censusDataDir >>= K.knitMaybe "censusTablesForProposedCDs: Empty path given to indureFinalSlash?"
   let states = FL.fold (FL.premap (F.rgetField @GT.StateAbbreviation) FL.list)
                $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                  && not (F.rgetField @BR.OneDistrict r)
@@ -240,7 +299,7 @@ censusTables2022CDsACS2021 :: (K.KnitEffects r
                            => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTables2022CDsACS2021 = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
-  censusDir <- K.liftKnit censusDataDir
+  censusDir <- K.liftKnit censusDataDir >>= K.knitMaybe "censusTables2022CDsACS2021: Empty path given to indureFinalSlash?"
   let states = FL.fold (FL.premap (F.rgetField @GT.StateAbbreviation) FL.list)
                $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                  && not (F.rgetField @BR.OneDistrict r)
@@ -257,7 +316,7 @@ censusTablesCD :: (K.KnitEffects r
                => Int -> BRC.TableYear -> K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesCD mapYear acsTableYear = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
-  censusDir <- K.liftKnit censusDataDir
+  censusDir <- K.liftKnit censusDataDir >>= K.knitMaybe "censusTablesCDs: Empty path given to indureFinalSlash?"
   let states = FL.fold (FL.premap (F.rgetField @GT.StateAbbreviation) FL.list)
                $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                  && not (F.rgetField @BR.OneDistrict r)
@@ -271,7 +330,7 @@ censusTablesFor2022SLDs ::  (K.KnitEffects r, BR.CacheEffects r)
                         => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesFor2022SLDs = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
-  censusDir <- K.liftKnit censusDataDir
+  censusDir <- K.liftKnit censusDataDir >>= K.knitMaybe "censusTablesFor2022SLDs: Empty path given to indureFinalSlash?"
   let statesAnd = FL.fold (FL.premap (\r -> (F.rgetField @GT.StateAbbreviation r, F.rgetField @BR.SLDUpperOnly r)) FL.list)
                   $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                          && not (F.rgetField @GT.StateAbbreviation r `Set.member` Set.insert "DC" noMaps)
@@ -286,7 +345,7 @@ censusTablesFor2022SLD_ACS2021 ::  (K.KnitEffects r
                     => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesFor2022SLD_ACS2021 = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
-  censusDir <- K.liftKnit censusDataDir
+  censusDir <- K.liftKnit censusDataDir >>= K.knitMaybe "censusTablesFor2022SLD_ACS2021: Empty path given to indureFinalSlash?"
   let statesAnd = FL.fold (FL.premap (\r -> (F.rgetField @GT.StateAbbreviation r, F.rgetField @BR.SLDUpperOnly r)) FL.list)
                   $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                          && not (F.rgetField @GT.StateAbbreviation r `Set.member` Set.insert "DC" noMaps)
@@ -301,7 +360,7 @@ censusTablesForSLDs ::  (K.KnitEffects r
                     => Int -> BRC.TableYear -> K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByLD)
 censusTablesForSLDs mapYear acsTableYear = do
   stateInfo <- K.ignoreCacheTimeM BR.stateAbbrCrosswalkLoader
-  censusDir <- K.liftKnit censusDataDir
+  censusDir <- K.liftKnit censusDataDir >>= K.knitMaybe "censusTablesForALDs: Empty path given to indureFinalSlash?"
   let statesAnd = FL.fold (FL.premap (\r -> (F.rgetField @GT.StateAbbreviation r, F.rgetField @BR.SLDUpperOnly r)) FL.list)
                   $ F.filterFrame (\r -> (F.rgetField @BR.StateFIPS r < 60)
                                          && not (F.rgetField @GT.StateAbbreviation r `Set.member` Set.insert "DC" noMaps)
@@ -533,9 +592,12 @@ aggregateSameKeysF :: forall p ks .
                       , (p V.++ ks) F.⊆ CensusRow p BRC.CensusDataR ks
                       , (((p V.++ BRC.CensusDataR) V.++ ks) V.++ '[DT.PopCount]) F.⊆ (BR.Year ': ((p V.++ ks) V.++ (BRC.CensusDataR V.++ '[DT.PopCount])))
                       , FI.RecVec (BR.Year ': ((p V.++ ks) V.++ (BRC.CensusDataR V.++ '[DT.PopCount])))
+                      , FI.RecVec (((p V.++ [BRC.SqMiles, BRC.TotalIncome, DT.PWPopPerSqMile])
+                                    V.++ ks)
+                                   V.++ '[DT.PopCount])
                       )
                    => FL.Fold (F.Record (CensusRow p BRC.CensusDataR ks)) (F.FrameRec (CensusRow p BRC.CensusDataR ks))
-aggregateSameKeysF = FMR.concatFold
+aggregateSameKeysF = fmap (F.toFrame . concat . fmap (FL.fold FL.list)) --FMR.concatFold
                      $ FMR.mapReduceFold
                      FMR.noUnpack
                      (FMR.assignKeysAndData @('[BR.Year] V.++ p V.++ ks))

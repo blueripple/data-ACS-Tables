@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -44,8 +45,11 @@ F.declareColumn "PerCapitaIncome" ''Double
 F.declareColumn "TotalIncome" ''Double
 
 type LDLocationR = [GT.StateFIPS, GT.DistrictTypeC, GT.DistrictName]
+type TractLocationR = [GT.StateAbbreviation, GT.TractId]
 type LDPrefixR = [GT.StateFIPS, GT.DistrictTypeC, GT.DistrictName, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
 type CensusDataR = [SqMiles, TotalIncome, DT.PWPopPerSqMile]
+
+type TractPrefixR = [GT.StateAbbreviation, GT.TractId, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
 
 aggCensusData :: FL.Fold (F.Record (CensusDataR V.++ '[DT.PopCount])) (F.Record (CensusDataR V.++ '[DT.PopCount]))
 aggCensusData =
@@ -53,7 +57,7 @@ aggCensusData =
       tiF = FL.premap (view totalIncome) FL.sum
       pcF = FL.premap (view DT.popCount) FL.sum
       wpwdF = FL.premap (\r -> realToFrac (r ^. DT.popCount) * r ^. DT.pWPopPerSqMile) FL.sum
-      safeDiv x y = if y /= 0 then x / realToFrac y else 0
+      safeDiv !x !y = if y /= 0 then x / realToFrac y else 0
       pwdF = safeDiv <$> wpwdF <*> pcF
   in (\sm ti pwd pc -> sm F.&: ti F.&: pwd F.&: pc F.&: V.RNil) <$> smF <*> tiF <*> pwdF <*> pcF
 
@@ -79,6 +83,21 @@ instance CSV.FromNamedRecord LDPrefix where
                        <$> r .: "StateFIPS"
                        <*> fmap unWrapDistrictType (r .: "DistrictType")
                        <*> r .: "DistrictName"
+                       <*> r .: "TotalPopulation"
+                       <*> r .: "pwPopPerSqMile"
+                       <*> r .: "PerCapitaIncome"
+                       <*> r .: "SqMiles"
+                       <*> r .: "SqKm"
+
+
+newtype TractPrefix = TractPrefix { unTractPrefix :: F.Record TractPrefixR } deriving stock Show
+toTractPrefix :: Text -> Int -> Int -> Double -> Double -> Double -> Double -> TractPrefix
+toTractPrefix sa tid pop pwd inc sm sk = TractPrefix $ sa F.&: tid F.&: pop F.&: pwd F.&: inc F.&: sm F.&: sk F.&: V.RNil
+
+instance CSV.FromNamedRecord TractPrefix where
+  parseNamedRecord r = toTractPrefix
+                       <$> r .: "StateAbbreviation"
+                       <*> r .: "TractId"
                        <*> r .: "TotalPopulation"
                        <*> r .: "pwPopPerSqMile"
                        <*> r .: "PerCapitaIncome"
