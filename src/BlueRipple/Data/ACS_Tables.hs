@@ -45,11 +45,11 @@ F.declareColumn "PerCapitaIncome" ''Double
 F.declareColumn "TotalIncome" ''Double
 
 type LDLocationR = [GT.StateFIPS, GT.DistrictTypeC, GT.DistrictName]
-type TractLocationR = [GT.StateAbbreviation, GT.TractId]
+type TractLocationR = [GT.StateAbbreviation, GT.TractGeoId]
 type LDPrefixR = [GT.StateFIPS, GT.DistrictTypeC, GT.DistrictName, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
 type CensusDataR = [SqMiles, TotalIncome, DT.PWPopPerSqMile]
 
-type TractPrefixR = [GT.StateAbbreviation, GT.TractId, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
+type TractPrefixR = [GT.StateAbbreviation, GT.TractGeoId, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
 
 aggCensusData :: FL.Fold (F.Record (CensusDataR V.++ '[DT.PopCount])) (F.Record (CensusDataR V.++ '[DT.PopCount]))
 aggCensusData =

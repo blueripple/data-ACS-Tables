@@ -201,7 +201,7 @@ censusTablesByTract filesByYear cacheName = do
 
 loadACS_2017_2022_Tracts :: (K.KnitEffects r, BR.CacheEffects r) => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByTract)
 loadACS_2017_2022_Tracts = do
-  dataDir <- K.liftKnit censusDataDir >>= K.knitMaybe "loadACS_2017_2022_Tracts: Empty path given to indureFinalSlash?"
+  dataDir <- K.liftKnit censusDataDir >>= K.knitMaybe "loadACS_2017_2022_Tracts: Empty path given to insureFinalSlash?"
   censusTablesByTract [(BRC.TY2022, dataDir <> "Tracts/ACS_5YR_2017_2022.csv")] "ACS_2017_2022_Tracts"
 
 type LoadedCensusTablesByLD
