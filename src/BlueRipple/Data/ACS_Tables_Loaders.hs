@@ -145,8 +145,10 @@ instance (FieldC Flat.Flat a
 
 --type CDRow rs = '[BR.Year] V.++ BRC.CDPrefixR V.++ rs V.++ '[DT.PopCount]
 
-type LoadedCensusTablesByTract =
-  CensusTables BRC.TractLocationR BRC.CensusDataR DT.Age6C DT.SexC DT.Education4C BRC.RaceEthnicityC BRC.CitizenshipC BRC.EmploymentC
+type LoadedCensusTablesBy loc = CensusTables loc BRC.CensusDataR DT.Age6C DT.SexC DT.Education4C BRC.RaceEthnicityC BRC.CitizenshipC BRC.EmploymentC
+
+type LoadedCensusTablesByTract = LoadedCensusTablesBy BRC.TractLocationR
+--  CensusTables BRC.TractLocationR BRC.CensusDataR DT.Age6C DT.SexC DT.Education4C BRC.RaceEthnicityC BRC.CitizenshipC BRC.EmploymentC
 
 censusTablesByTract :: (K.KnitEffects r
                        , BR.CacheEffects r)
@@ -204,8 +206,8 @@ loadACS_2017_2022_Tracts = do
   dataDir <- K.liftKnit censusDataDir >>= K.knitMaybe "loadACS_2017_2022_Tracts: Empty path given to insureFinalSlash?"
   censusTablesByTract [(BRC.TY2022, dataDir <> "Tracts/ACS_5YR_2017_2022.csv")] "ACS_2017_2022_Tracts"
 
-type LoadedCensusTablesByLD
-  = CensusTables BRC.LDLocationR BRC.CensusDataR DT.Age6C DT.SexC DT.Education4C BRC.RaceEthnicityC BRC.CitizenshipC BRC.EmploymentC
+type LoadedCensusTablesByLD = LoadedCensusTablesBy BRC.LDLocationR
+--  = CensusTables BRC.LDLocationR BRC.CensusDataR DT.Age6C DT.SexC DT.Education4C BRC.RaceEthnicityC BRC.CitizenshipC BRC.EmploymentC
 
 censusTablesByDistrict  :: (K.KnitEffects r
                            , BR.CacheEffects r)
