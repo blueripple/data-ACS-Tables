@@ -195,8 +195,7 @@ censusTablesByTract filesByYear cacheName = do
   dataDeps <- traverse (K.fileDependency . toString . snd) filesByYear
   let dataDep = fromMaybe (pure ()) $ fmap sconcat $ nonEmpty dataDeps
   K.retrieveOrMake @BR.SerializerC @BR.CacheData @Text ("data/Census/" <> cacheName <> ".bin") dataDep $ const $ do
-    K.logLE K.Info "Rebuilding Census tables for Tracts..."
-    tables <- traverse doOneYear filesByYear
+    tables <- K.logTiming (K.logLE K.Info) "Rebuilding tract Census tables" $ traverse doOneYear filesByYear
     neTables <- K.knitMaybe "Empty list of tables in result of censusTablesByTract" $ nonEmpty tables
     return $ sconcat neTables
 
@@ -255,7 +254,7 @@ censusTablesByDistrict filesByYear cacheName = do
   let dataDep = fromMaybe (pure ()) $ fmap sconcat $ nonEmpty dataDeps
   K.retrieveOrMake @BR.SerializerC @BR.CacheData @Text ("data/Census/" <> cacheName <> ".bin") dataDep $ const $ do
     K.logLE K.Info "Rebuilding Census tables for SLDS..."
-    tables <- traverse doOneYear filesByYear
+    tables <-  K.logTiming (K.logLE K.Info) "SLDS Census tables Rebuilt" $ traverse doOneYear filesByYear
     neTables <- K.knitMaybe "Empty list of tables in result of censusTablesByDistrict" $ nonEmpty tables
     return $ sconcat neTables
 

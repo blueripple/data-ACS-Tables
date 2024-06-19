@@ -1,4 +1,4 @@
-packages: ./
+packages: ./ ~/DataScience/knit-haskell
 jobs: 4
 with-compiler: ghc
 
@@ -16,7 +16,7 @@ import: ../cabal_repo_imports/data-loading.project
 import: ../cabal_repo_imports/data-types.project
 import: ../cabal_repo_imports/post-tools.project
 import: ../cabal_repo_imports/small-data-sets.project
-import: ../cabal_repo_imports/knit-haskell.project
+--import: ../cabal_repo_imports/knit-haskell.project
 import: ../cabal_repo_imports/Frames-streamly.project
 import: ../cabal_repo_imports/Frames-serialize.project
 import: ../cabal_repo_imports/Frames-utils.project
