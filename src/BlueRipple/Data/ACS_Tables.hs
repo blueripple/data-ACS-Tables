@@ -197,11 +197,19 @@ F.declareColumn "CitizenshipC" ''Citizenship
 citizenshipFromIsCitizen :: Bool -> [Citizenship]
 citizenshipFromIsCitizen True = [Native, Naturalized]
 citizenshipFromIsCitizen False = [NonCitizen]
+{-# INLINEABLE citizenshipFromIsCitizen #-}
 
 citizenshipToIsCitizen :: Citizenship -> Bool
 citizenshipToIsCitizen Native = True
 citizenshipToIsCitizen Naturalized = True
 citizenshipToIsCitizen NonCitizen = False
+{-# INLINEABLE citizenshipToIsCitizen #-}
+
+citizenshipToCitizen :: Citizenship -> DT.Citizen
+citizenshipToCitizen Native = DT.Citizen
+citizenshipToCitizen Naturalized = DT.Citizen
+citizenshipToCitizen NonCitizen = DT.NonCitizen
+{-# INLINEABLE citizenshipToCitizen #-}
 
 -- Easiest to have a type matching the census table
 data RaceEthnicity = R_White | R_Black | R_Asian | R_Other | E_Hispanic | E_WhiteNonHispanic deriving stock (Show, Enum, Bounded, Eq, Ord, Array.Ix, Generic)
