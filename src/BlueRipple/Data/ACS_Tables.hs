@@ -479,6 +479,7 @@ sexByAge (NHGISPrefix p) =
                ,((DT.Female, A14_85AndOver), p <> "E031")
                ]
 
+-- NB: This is a by-age table but just under 18 and over 18. We only keep the over.
 sexByCitizenshipPrefix :: TableYear -> RaceEthnicity -> [NHGISPrefix]
 sexByCitizenshipPrefix TY2022 R_White = [NHGISPrefix "AQY7"]
 sexByCitizenshipPrefix TY2022 R_Black = [NHGISPrefix "AQY8"]
