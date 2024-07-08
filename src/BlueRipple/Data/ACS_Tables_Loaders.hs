@@ -66,7 +66,7 @@ censusDataDir = fmap BR.insureFinalSlash (fromMaybe "../bigData/Census" . fmap t
 type CensusRowUC p d ks = '[BR.Year] V.++ p V.++ d V.++ ks
 type CensusRow p d ks = CensusRowUC p d ks V.++ '[DT.PopCount]
 
-gdata CensusTables p d a s e r c l
+data CensusTables p d a s e r c l
   = CensusTables { ageSexRace :: F.FrameRec (CensusRow p d [a, s, r])
                  , citizenshipSexRace :: F.FrameRec (CensusRow p d [c, s, r])
                  , sexEducationRace :: F.FrameRec (CensusRow p d [s, e, r])
