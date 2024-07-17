@@ -514,6 +514,16 @@ cToCFld = fmap F.toFrame $ BRK.aggFoldAllRec ageAggFRec collapse
     ageAggFRec = BRK.toAggFRec cAggF
     collapse = BRK.dataFoldCollapseBool (DT.pwDensityAndPopFldRec DT.Geometric)
 
+cToCFld2 :: FL.Fold (F.Record [BRC.CitizenshipC, DT.PopCount, DT.PWPopPerSqMile]) (F.FrameRec [DT.CitizenC, DT.PopCount, DT.PWPopPerSqMile])
+cToCFld2 = FMR.concatFold
+           $ FMR.mapReduceFold
+           (FMR.Unpack $ aggUnpack @BRC.CitizenshipC @DT.CitizenC BRC.citizenshipToCitizen)
+           (FMR.assignKeysAndData @'[DT.CitizenC] @[DT.PopCount, DT.PWPopPerSqMile])
+           (FMR.foldAndAddKey $ DT.pwDensityAndPopFldRec DT.Geometric)
+
+aggUnpack :: forall t t' rs . (V.KnownField t, V.KnownField t', rs F.⊆ (t ': rs)) => (V.Snd t -> V.Snd t') -> F.Record (t ': rs) -> [F.Record (t' ': rs)]
+aggUnpack f r = pure $ FT.recordSingleton @t' (f $ F.rgetField @t r) F.<+> F.rcast @rs r
+
 censusDemographicsRecode :: F.FrameRec CensusSERR -> F.FrameRec CensusRecodedR
 censusDemographicsRecode rows =
   let fld1 = FMR.concatFold
