@@ -256,6 +256,11 @@ censusTablesByCounty filesByYear cacheName = do
     return $ sconcat neTables
 
 
+loadACS_2018_2022_Counties2024 :: (K.KnitEffects r, BR.CacheEffects r) => K.Sem r (K.ActionWithCacheTime r LoadedCensusTablesByCounty)
+loadACS_2018_2022_Counties2024 = do
+  dataDir <- K.liftKnit censusDataDir >>= K.knitMaybe "loadACS_2018_2022_Counties: Empty path given to insureFinalSlash?"
+  censusTablesByCounty [(BRC.TY2022, dataDir <> "county2024_ACS2022.csv")] "ACS_2018_2022_County2024"
+
 type LoadedCensusTablesByLD = LoadedCensusTablesBy BRC.LDLocationR
 --  = CensusTables BRC.LDLocationR BRC.CensusDataR DT.Age6C DT.SexC DT.Education4C BRC.RaceEthnicityC BRC.CitizenshipC BRC.EmploymentC
 
