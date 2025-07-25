@@ -28,7 +28,7 @@ library
       , blueripple-small-data-sets
       , array >= 0.5 && < 0.6
       , cassava >= 0.5 && < 0.6
-      , containers >= 0.6 && < 0.7
+      , containers >= 0.6 && < 0.8
       , discrimination >= 0.5 && < 0.6
       , Frames >= 0.7 && < 0.8
       , Frames-utils >= 0.3.1

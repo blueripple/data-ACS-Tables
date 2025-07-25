@@ -45,11 +45,16 @@ F.declareColumn "PerCapitaIncome" ''Double
 F.declareColumn "TotalIncome" ''Double
 
 type LDLocationR = [GT.StateFIPS, GT.DistrictTypeC, GT.DistrictName]
-type TractLocationR = [GT.StateAbbreviation, GT.TractGeoId]
 type LDPrefixR = [GT.StateFIPS, GT.DistrictTypeC, GT.DistrictName, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
+
+type TractLocationR = [GT.StateAbbreviation, GT.TractGeoId]
+type TractPrefixR = [GT.StateAbbreviation, GT.TractGeoId, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
+
+type CountyLocationR = [GT.StateFIPS, GT.CountyFIPS]
+type CountyPrefixR = [GT.StateFIPS, GT.CountyFIPS, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
+
 type CensusDataR = [SqMiles, TotalIncome, DT.PWPopPerSqMile]
 
-type TractPrefixR = [GT.StateAbbreviation, GT.TractGeoId, DT.TotalPopCount, DT.PWPopPerSqMile, TotalIncome, SqMiles, SqKm]
 
 aggCensusData :: FL.Fold (F.Record (CensusDataR V.++ '[DT.PopCount])) (F.Record (CensusDataR V.++ '[DT.PopCount]))
 aggCensusData =
@@ -83,6 +88,22 @@ instance CSV.FromNamedRecord LDPrefix where
                        <$> r .: "StateFIPS"
                        <*> fmap unWrapDistrictType (r .: "DistrictType")
                        <*> r .: "DistrictName"
+                       <*> r .: "TotalPopulation"
+                       <*> r .: "pwPopPerSqMile"
+                       <*> r .: "PerCapitaIncome"
+                       <*> r .: "SqMiles"
+                       <*> r .: "SqKm"
+
+
+newtype CountyPrefix = CountyPrefix { unCountyPrefix :: F.Record CountyPrefixR } deriving stock Show
+toCountyPrefix :: Int -> Int -> Int -> Double -> Double -> Double -> Double -> CountyPrefix
+toCountyPrefix sf cf pop pwd inc sm sk
+  = CountyPrefix $ sf F.&: cf F.&: pop F.&: pwd F.&: (realToFrac pop * inc) F.&: sm F.&: sk F.&: V.RNil
+
+instance CSV.FromNamedRecord CountyPrefix where
+  parseNamedRecord r = toCountyPrefix
+                       <$> r .: "StateFIPS"
+                       <*> r .: "CountyFIPS"
                        <*> r .: "TotalPopulation"
                        <*> r .: "pwPopPerSqMile"
                        <*> r .: "PerCapitaIncome"
