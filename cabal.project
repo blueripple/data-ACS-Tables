@@ -9,7 +9,8 @@ with-compiler: ghc
 --           , heidi:base
 --           , generic-trie:base
 
-allow-newer: base, ghc-prim, template-haskell, time, bytestring, containers, hashable, lens, profunctors, primitive, text, vector, constraints, extra
+allow-newer: base, ghc-prim, template-haskell, time, bytestring, containers, constraints
+           , foldl-statistics:hashable, foldl-statistics:profunctors
 
 flags: +streamly9
 
@@ -24,5 +25,6 @@ import: ../cabal_repo_imports/Frames-serialize.project
 import: ../cabal_repo_imports/Frames-utils.project
 import: ../cabal_repo_imports/Frames-hvega.project
 import: ../cabal_repo_imports/hvega-utils.project
+import: ../cabal_repo_imports/Frames-map-reduce.project
 import: ../cabal_repo_imports/map-reduce-folds.project
 import: ../cabal_repo_imports/heidi.project
